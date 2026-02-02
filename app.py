@@ -1,4 +1,6 @@
 import streamlit as st
+import os
+# Humare custom modules
 from src.pdf_logic import PDFHandler
 from src.ocr_logic import extract_text_from_image, image_to_pdf
 
@@ -9,19 +11,18 @@ st.sidebar.title("Tools Menu")
 
 app_mode = st.sidebar.selectbox("Choose Mode", ["PDF Editor", "Scanner (OCR)", "Word Editor"])
 
+# --- MODE 1: PDF EDITOR ---
 if app_mode == "PDF Editor":
     st.header("📄 PDF Text Editor")
     uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
 
     if uploaded_file:
-        # PDF लोड करें
         pdf_tool = PDFHandler(uploaded_file.read())
         
-        # --- SECURITY CHECK (नया फीचर) ---
+        # Security Check
         if pdf_tool.is_encrypted:
-            st.error("🔒 यह PDF Password Protected है! कृपया पहले इसका पासवर्ड हटाएं या कोई और PDF अपलोड करें।")
+            st.error("🔒 Locked PDF! Password hatakar upload karein.")
         else:
-            # अगर PDF लॉक नहीं है, तभी आगे बढ़ें
             total_pages = pdf_tool.get_page_count()
             page_num = st.sidebar.number_input("Page No", 1, total_pages, 1) - 1
             
@@ -29,56 +30,61 @@ if app_mode == "PDF Editor":
             
             with col1:
                 st.subheader("Edit Text")
-                
-                # Raw Text Viewer
-                with st.expander("🔍 See Raw Text (Copy for accuracy)"):
-                    try:
-                        raw_text = pdf_tool.get_raw_text(page_num)
-                        st.text_area("System Text View:", raw_text, height=100)
-                        if not raw_text.strip():
-                            st.warning("⚠️ यह बॉक्स खाली है? इसका मतलब यह Scanned PDF (फोटो) है। कृपया 'Scanner (OCR)' मोड यूज़ करें।")
-                    except Exception as e:
-                        st.error(f"Error reading text: {e}")
 
-                old_txt = st.text_input("Find Text (Paste Exact Text)")
+                # --- 1. FONT SELECTOR (Naya Feature) ---
+                available_fonts = ["Default (English Only)"]
+                
+                # Check agar assets folder hai
+                if os.path.exists("assets"):
+                    for f in os.listdir("assets"):
+                        if f.endswith(".ttf") or f.endswith(".otf"):
+                            available_fonts.append(f)
+                else:
+                    st.warning("⚠️ 'assets' folder nahi mila. Hindi font ke liye folder banayein.")
+
+                selected_font = st.selectbox("Choose Font", available_fonts)
+                
+                # Font ka path set karna
+                font_path = None
+                if selected_font != "Default (English Only)":
+                    font_path = os.path.join("assets", selected_font)
+
+                # --- 2. RAW TEXT VIEWER ---
+                with st.expander("🔍 See Raw Text"):
+                    st.text_area("System View:", pdf_tool.get_raw_text(page_num), height=100)
+
+                # --- 3. EDIT INPUTS ---
+                old_txt = st.text_input("Find Text")
                 new_txt = st.text_input("Replace With")
                 
                 if st.button("Apply Changes"):
-                    success, count = pdf_tool.search_and_replace(page_num, old_txt, new_txt)
+                    success, count = pdf_tool.search_and_replace(page_num, old_txt, new_txt, font_path)
                     if success:
-                        st.success(f"Success! {count} जगह बदलाव हो गया।")
+                        st.success(f"Success! {count} changes made using {selected_font}.")
                     else:
-                        st.error("Text Not Found. (शायद स्पेलिंग मैच नहीं हो रही)")
+                        st.error("Text not found.")
 
             with col2:
-                st.subheader("Live Preview")
-                try:
-                    img_data = pdf_tool.get_page_image(page_num)
-                    st.image(img_data, use_column_width=True)
-                except Exception as e:
-                    st.error("Preview load नहीं हो पाया।")
+                st.subheader("Preview")
+                st.image(pdf_tool.get_page_image(page_num), use_column_width=True)
 
-            st.markdown("---")
-            st.download_button("Download Edited PDF", pdf_tool.save_pdf(), "final_document.pdf")
+            st.download_button("Download PDF", pdf_tool.save_pdf(), "edited_doc.pdf")
 
+# --- MODE 2: SCANNER (OCR) ---
 elif app_mode == "Scanner (OCR)":
     st.header("📷 Image Scanner & OCR")
-    uploaded_image = st.file_uploader("Upload Image (JPG/PNG)", type=["png", "jpg", "jpeg"])
+    uploaded_image = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
     
     if uploaded_image:
-        st.image(uploaded_image, caption="Uploaded Image", width=300)
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Extract Text (OCR)"):
-                with st.spinner("Reading text..."):
-                    text = extract_text_from_image(uploaded_image.getvalue())
-                    st.text_area("Extracted Result:", text, height=200)
-        with col2:
-            if st.button("Convert to PDF"):
-                pdf_data = image_to_pdf(uploaded_image.getvalue())
-                if pdf_data:
-                    st.download_button("Download PDF", pdf_data, "scanned.pdf", "application/pdf")
+        st.image(uploaded_image, width=300)
+        if st.button("Extract Text"):
+            text = extract_text_from_image(uploaded_image.getvalue())
+            st.text_area("Result", text)
+        if st.button("Convert to PDF"):
+            pdf_data = image_to_pdf(uploaded_image.getvalue())
+            if pdf_data: st.download_button("Download PDF", pdf_data, "scan.pdf")
 
+# --- MODE 3: WORD EDITOR ---
 elif app_mode == "Word Editor":
-    st.info("🚧 Word (.docx) Editor is under construction.")
+    st.info("🚧 Coming Soon...")
     
