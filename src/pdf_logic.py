@@ -30,7 +30,69 @@ class PDFHandler:
     def search_and_replace(self, page_num, search_text, replace_text, font_path=None):
         page = self.doc[page_num]
         hits = page.search_for(search_text, quads=True)
+        import fitz  # PyMuPDF
+import io
+import os
+
+class PDFHandler:
+    def __init__(self, file_stream):
+        # फाइल को मेमोरी में लोड करना
+        self.doc = fitz.open(stream=file_stream, filetype="pdf")
+
+    @property
+    def is_encrypted(self):
+        """चेक करें कि क्या PDF लॉक है"""
+        if self.doc.is_encrypted:
+            if self.doc.authenticate(""):
+                return False
+            return True
+        return False
+
+    def get_page_count(self):
+        return len(self.doc)
+
+    def get_page_image(self, page_num):
+        page = self.doc[page_num]
+        pix = page.get_pixmap()
+        return pix.tobytes()
+
+    def get_raw_text(self, page_num):
+        page = self.doc[page_num]
+        return page.get_text("text")
+
+    # 👇 अपडेटेड फंक्शन: अब यह 'font_size' भी ले रहा है
+    def search_and_replace(self, page_num, search_text, replace_text, font_path=None, font_size=11):
+        page = self.doc[page_num]
+        hits = page.search_for(search_text, quads=True)
         
+        if hits:
+            # फॉन्ट सेट करना
+            font_name = "helv" # डिफ़ॉल्ट इंग्लिश
+            if font_path and os.path.exists(font_path):
+                font_name = "custom_font"
+                # फॉन्ट रजिस्टर करना
+                page.insert_font(fontname=font_name, fontfile=font_path, fontbuffer=None)
+
+            for quad in hits:
+                # 1. पुराना टेक्स्ट छुपाना (White Box)
+                page.draw_rect(quad.rect, color=fitz.pdfcolor["white"], fill=fitz.pdfcolor["white"])
+                
+                # 2. नया टेक्स्ट लिखना (User के बताए साइज़ पर)
+                page.insert_text(
+                    (quad.ul.x, quad.ul.y + 10),
+                    replace_text,
+                    fontname=font_name,
+                    fontsize=font_size,  # ✅ यहाँ साइज़ कंट्रोल हो रहा है
+                    color=(0, 0, 0)
+                )
+            return True, len(hits)
+        return False, 0
+
+    def save_pdf(self):
+        output_buffer = io.BytesIO()
+        self.doc.save(output_buffer)
+        return output_buffer.getvalue()
+
         if hits:
             # Font Logic: Agar Hindi font diya hai to use load karein
             font_name = "helv" # Default English
