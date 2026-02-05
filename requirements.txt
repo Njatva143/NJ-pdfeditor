@@ -4,3 +4,4 @@ Pillow
 python-docx
 numpy
 pytesseract
+pdf2image
