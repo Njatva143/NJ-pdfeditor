@@ -1,25 +1,34 @@
 import pytesseract
 from PIL import Image
+from pdf2image import convert_from_bytes
 import io
 
-# अगर Termux में Tesseract का पाथ एरर आए, तो नीचे वाली लाइन से # हटा दें:
-# pytesseract.pytesseract.tesseract_cmd = '/data/data/com.termux/files/usr/bin/tesseract'
+# Tesseract ko batana padta hai ki Hindi+English dono padho
+LANG_CONFIG = 'hin+eng'
 
-def extract_text_from_image(image_bytes):
+def extract_text_from_file(uploaded_file):
+    text_content = ""
     try:
-        image = Image.open(io.BytesIO(image_bytes))
-        # इंग्लिश और हिंदी दोनों के लिए कोशिश करेगा (अगर हिंदी पैक इंस्टाल है)
-        text = pytesseract.image_to_string(image, lang='eng')
-        return text
-    except Exception as e:
-        return f"Error: {str(e)}. (Check if Tesseract is installed in Termux: pkg install tesseract)"
+        file_bytes = uploaded_file.getvalue()
+        file_type = uploaded_file.type
 
-def image_to_pdf(image_bytes):
-    try:
-        image = Image.open(io.BytesIO(image_bytes))
-        pdf_bytes = io.BytesIO()
-        image.save(pdf_bytes, format="PDF")
-        return pdf_bytes.getvalue()
+        # 1. Agar Image hai (JPG, PNG)
+        if "image" in file_type:
+            image = Image.open(io.BytesIO(file_bytes))
+            text_content = pytesseract.image_to_string(image, lang=LANG_CONFIG)
+
+        # 2. Agar PDF hai
+        elif "pdf" in file_type:
+            # PDF ke har page ko image mein badlo (High Quality)
+            images = convert_from_bytes(file_bytes)
+            for i, img in enumerate(images):
+                page_text = pytesseract.image_to_string(img, lang=LANG_CONFIG)
+                text_content += f"\n--- Page {i+1} ---\n{page_text}\n"
+        
+        else:
+            return "❌ Unsupported file format. Please upload Image or PDF."
+
     except Exception as e:
-        return None
-      
+        return f"❌ Error in OCR: {e}"
+        
+    return text_content
