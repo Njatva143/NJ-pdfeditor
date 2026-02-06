@@ -87,30 +87,39 @@ if app_mode == "📄 PDF Editor (Live Preview)":
         with c2:
             new_txt = st.text_input("Replace With (New):", placeholder="Enter new text here")
 
-        # Font Settings
-        with st.expander("⚙️ Hindi/Font Settings"):
-            font_choice = st.selectbox("Choose Font:", ["Standard (English)", "Custom (.ttf)"])
-            font_path = None
-            if font_choice == "Custom (.ttf)":
-                if os.path.exists("assets"):
-                    fonts = [f for f in os.listdir("assets") if f.endswith(".ttf")]
-                    sel = st.selectbox("Select Font File:", fonts)
-                    if sel: font_path = os.path.join("assets", sel)
-                else:
-                    st.warning("⚠️ 'assets' folder not found.")
+        # Font & Alignment Settings
+        with st.expander("⚙️ Font & Alignment Settings", expanded=True):
+            f_col1, f_col2 = st.columns(2)
             
-            fs = st.slider("Font Size:", 8, 50, 11)
+            with f_col1:
+                font_choice = st.selectbox("Choose Font:", ["Standard (English)", "Custom (.ttf)"])
+                font_path = None
+                if font_choice == "Custom (.ttf)":
+                    if os.path.exists("assets"):
+                        fonts = [f for f in os.listdir("assets") if f.endswith(".ttf")]
+                        sel = st.selectbox("Select Font File:", fonts)
+                        if sel: font_path = os.path.join("assets", sel)
+                    else:
+                        st.warning("⚠️ 'assets' folder not found.")
+                
+                fs = st.slider("Font Size:", 8, 50, 11)
+            
+            with f_col2:
+                # ✅ Alignment Selector Added
+                alignment = st.selectbox("Text Alignment:", ["Left", "Center", "Right"])
+                st.caption(f"Text will be aligned: **{alignment}** relative to the original text box.")
 
         # APPLY BUTTON
         if st.button("🚀 Apply Change & Refresh", type="primary"):
             if old_txt:
-                success, count = pdf_tool.search_and_replace(page_num, old_txt, new_txt, font_path, fs)
+                # Pass alignment to logic
+                success, count = pdf_tool.search_and_replace(page_num, old_txt, new_txt, font_path, fs, align=alignment)
                 
                 if success:
                     # Update Memory with new PDF
                     st.session_state.pdf_bytes = pdf_tool.save_pdf()
                     st.session_state.edit_counter += 1
-                    st.success(f"✅ Replaced {count} times! Refreshing...")
+                    st.success(f"✅ Replaced {count} times ({alignment} Aligned)! Refreshing...")
                     st.rerun() # Reloads the app to show new image
                 else:
                     st.error("❌ Text not found on this page. Try copying text from 'Show Page Text' box.")
@@ -164,14 +173,20 @@ elif app_mode == "👁️ OCR Scanner (Img to Text)":
                     st.success("✅ Scan Complete!")
                     st.text_area("Extracted Text:", text, height=300)
                     
-                    # Save to History
+                    # ✅ FIX: Saving History with UTF-8 (Hindi Support)
                     try:
                         with open("scanned_history.txt", "a", encoding="utf-8") as f:
                             f.write(f"\n--- New Scan ---\n{text}\n")
-                    except:
-                        pass
+                    except Exception as e:
+                        st.error(f"Could not save history: {e}")
                     
-                    st.download_button("⬇️ Download Text File", text, "scanned_text.txt")
+                    # ✅ FIX: Downloading with UTF-8 BOM/Charset
+                    st.download_button(
+                        label="⬇️ Download Text File", 
+                        data=text, 
+                        file_name="scanned_text.txt",
+                        mime="text/plain; charset=utf-8"  # Hindi Fix Here
+                    )
                 else:
                     st.error(f"OCR Error: {err}")
 
@@ -193,7 +208,12 @@ elif app_mode == "📂 Saved Files / History":
             with col_btn:
                 try:
                     with open(file_name, "rb") as f:
-                        st.download_button("⬇️ Download", f.read(), file_name, key=file_name)
+                        # Determine Mime Type
+                        mime_type = "application/octet-stream"
+                        if file_name.endswith(".txt"): mime_type = "text/plain; charset=utf-8"
+                        elif file_name.endswith(".pdf"): mime_type = "application/pdf"
+                        
+                        st.download_button("⬇️ Download", f.read(), file_name, mime=mime_type, key=file_name)
                 except Exception as e:
                     st.error("Locked")
             st.divider()
