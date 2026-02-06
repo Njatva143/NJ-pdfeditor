@@ -1,96 +1,67 @@
 import fitz  # PyMuPDF
-import io
 import os
-from PIL import Image, ImageDraw, ImageFont
 
 class PDFHandler:
     def __init__(self, file_stream):
         self.doc = fitz.open(stream=file_stream, filetype="pdf")
-
-    @property
-    def is_encrypted(self):
-        if self.doc.is_encrypted:
-            if self.doc.authenticate(""):
-                return False
-            return True
-        return False
+        self.is_encrypted = self.doc.is_encrypted
 
     def get_page_count(self):
-        return len(self.doc)
+        return self.doc.page_count
 
     def get_page_image(self, page_num):
-        page = self.doc[page_num]
-        pix = page.get_pixmap()
+        page = self.doc.load_page(page_num)
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # High Quality
         return pix.tobytes()
 
     def get_raw_text(self, page_num):
-        page = self.doc[page_num]
+        page = self.doc.load_page(page_num)
         return page.get_text("text")
 
-    def create_text_sticker(self, text, font_path, font_size):
-        try:
-            if not text.strip(): # अगर टेक्स्ट खाली है तो कुछ मत बनाओ
-                return None, 0, 0
-                
-            scale_factor = 3
-            pil_font = ImageFont.truetype(font_path, font_size * scale_factor)
-            
-            dummy_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
-            bbox = dummy_draw.textbbox((0, 0), text, font=pil_font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-            
-            if text_width == 0 or text_height == 0:
-                return None, 0, 0
-
-            img = Image.new("RGBA", (text_width, text_height + 10), (255, 255, 255, 0))
-            draw = ImageDraw.Draw(img)
-            
-            # Text को थोड़ा नीचे शिफ्ट किया है ताकि कटे नहीं
-            draw.text((-bbox[0], 0), text, font=pil_font, fill="black")
-            
-            img_byte_arr = io.BytesIO()
-            img.save(img_byte_arr, format="PNG")
-            
-            return img_byte_arr.getvalue(), text_width / scale_factor, text_height / scale_factor
-        except Exception as e:
-            print(f"Font Error: {e}")
-            return None, 0, 0
-
-    def search_and_replace(self, page_num, search_text, replace_text, font_path=None, font_size=11):
-        page = self.doc[page_num]
-        hits = page.search_for(search_text, quads=True)
-        
-        if hits:
-            use_sticker_mode = False
-            if font_path and os.path.exists(font_path):
-                use_sticker_mode = True
-
-            for quad in hits:
-                # 1. पुराना टेक्स्ट छुपाना
-                page.draw_rect(quad.rect, color=fitz.pdfcolor["white"], fill=fitz.pdfcolor["white"])
-                
-                # 2. नया टेक्स्ट लिखना
-                if use_sticker_mode:
-                    img_bytes, w, h = self.create_text_sticker(replace_text, font_path, font_size)
-                    
-                    # ✅ FIX: यहाँ चेक लगाया है कि width और height 0 से बड़ी हो
-                    if img_bytes and w > 0 and h > 0:
-                        rect = fitz.Rect(quad.ul.x, quad.ul.y, quad.ul.x + w, quad.ul.y + h)
-                        page.insert_image(rect, stream=img_bytes)
-                else:
-                    page.insert_text(
-                        (quad.ul.x, quad.ul.y + 10),
-                        replace_text,
-                        fontname="helv",
-                        fontsize=font_size,
-                        color=(0, 0, 0)
-                    )
-            return True, len(hits)
-        return False, 0
-
     def save_pdf(self):
-        output_buffer = io.BytesIO()
-        self.doc.save(output_buffer)
-        return output_buffer.getvalue()
+        return self.doc.tobytes()
+
+    def search_and_replace(self, page_num, search_text, replace_text, font_path=None, font_size=11, align="Left"):
+        page = self.doc.load_page(page_num)
+        hits = page.search_for(search_text)
+        
+        if not hits:
+            return False, 0
+
+        # Font setup
+        font_name = "helv"  # Default
+        if font_path:
+            font_name = "custom_font"
+            page.insert_font(fontname=font_name, fontfile=font_path, fontbuffer=None)
+
+        for rect in hits:
+            # 1. Purana text chupao (White Sticker)
+            page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1), width=0)
+
+            # 2. Text Width Calculate karo (Alignment ke liye)
+            text_len = fitz.get_text_length(replace_text, fontname=font_name, fontsize=font_size)
+            box_width = rect.x1 - rect.x0
+            
+            # 3. Coordinate Math (Left/Center/Right)
+            text_x = rect.x0  # Default Left
+            text_y = rect.y1 - 2  # Thoda upar baseline adjust karne ke liye
+
+            if align == "Center":
+                # Formula: Start + (BoxWidth - TextWidth) / 2
+                text_x = rect.x0 + (box_width - text_len) / 2
+            
+            elif align == "Right":
+                # Formula: End - TextWidth
+                text_x = rect.x1 - text_len
+
+            # 4. Naya Text Likho
+            page.insert_text(
+                (text_x, text_y),
+                replace_text,
+                fontname=font_name,
+                fontsize=font_size,
+                color=(0, 0, 0) # Black Color
+            )
+
+        return True, len(hits)
         
