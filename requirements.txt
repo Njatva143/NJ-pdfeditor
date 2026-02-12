@@ -1,7 +1,11 @@
 streamlit
+streamlit-drawable-canvas==0.9.3
 pymupdf
-Pillow
+pdf2image
+pdf2docx
 python-docx
+fpdf2
+Pillow
 numpy
 pytesseract
-pdf2image
+PyPDF2
