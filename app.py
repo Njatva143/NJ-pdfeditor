@@ -1,12 +1,28 @@
 import streamlit as st
 import os
 
+# ==========================================
+# 🛑 CRITICAL FIX (DO NOT REMOVE)
+# Streamlit 1.34+ Breakage Fix
+# ==========================================
+try:
+    # Canvas library purane Streamlit function ko dhund rahi hai jo ab gayab hai.
+    # Hum use wapas inject kar rahe hain.
+    import streamlit.elements.image
+    from streamlit.elements.utils import image_to_url
+    
+    if not hasattr(streamlit.elements.image, 'image_to_url'):
+        streamlit.elements.image.image_to_url = image_to_url
+except Exception as e:
+    pass # Agar ye fail hua, to hum kuch nahi kar sakte
+# ==========================================
+
 # --- PAGE CONFIG ---
-st.set_page_config("Live PDF Editor", layout="wide")
-st.title("📄 Live PDF Editor (Fast Mode)")
+st.set_page_config("PDF Live Editor", layout="wide")
+st.title("📄 PDF Live Editor & Converter")
 
 # ==========================================
-# 🛡️ SAFE IMPORT BLOCK
+# 🛡️ SAFE IMPORTS
 # ==========================================
 try:
     from streamlit_drawable_canvas import st_canvas
@@ -20,10 +36,11 @@ try:
     import tempfile
 except ImportError as e:
     st.error(f"🚨 Library Missing: {e}")
+    st.info("Please update 'requirements.txt' and 'packages.txt' on GitHub.")
     st.stop()
 
 # ==========================================
-# 🛠️ UTILITIES
+# 🛠️ CONFIG & UTILITIES
 # ==========================================
 MAX_PAGES = 10
 DPI = 150
@@ -46,7 +63,7 @@ def pdf_to_images(file_bytes):
     try:
         return convert_from_bytes(file_bytes, dpi=DPI)
     except Exception as e:
-        st.error("❌ PDF Error: 'poppler-utils' missing.")
+        st.error("❌ PDF Error: 'poppler-utils' missing in packages.txt")
         st.stop()
 
 def resize_img(img):
@@ -80,7 +97,7 @@ mode = st.sidebar.radio("Select Mode", ["📝 Live Editor", "Word ↔ PDF"])
 if mode == "📝 Live Editor":
     st.info("ℹ️ **Live Edit:** Select **'Whitener'** to erase text, then **'Text'** to type new.")
     
-    uploaded = st.file_uploader("Upload PDF", type=["pdf", "docx"])
+    uploaded = st.file_uploader("Upload PDF or Word", type=["pdf", "docx"])
 
     if uploaded:
         # Load Logic
@@ -129,17 +146,21 @@ if mode == "📝 Live Editor":
             key = f"canvas_{uploaded.name}_{pg_num}_{st.session_state.canvas_key}"
 
             # --- LIVE CANVAS ---
-            canvas = st_canvas(
-                fill_color=fill,
-                stroke_width=sz,
-                stroke_color=clr,
-                background_image=bg_img,
-                height=bg_img.height,
-                width=bg_img.width,
-                drawing_mode=d_mode,
-                key=key,
-                update_streamlit=True, # 🔥 YE HAI LIVE FEATURE
-            )
+            try:
+                canvas = st_canvas(
+                    fill_color=fill,
+                    stroke_width=sz,
+                    stroke_color=clr,
+                    background_image=bg_img,
+                    height=bg_img.height,
+                    width=bg_img.width,
+                    drawing_mode=d_mode,
+                    key=key,
+                    update_streamlit=True, # 🔥 LIVE FEATURE
+                )
+            except Exception as e:
+                st.error(f"Canvas Error: {e}")
+                st.stop()
 
             # --- SAVE & MERGE BUTTON ---
             col_save, col_down = st.columns(2)
@@ -155,7 +176,7 @@ if mode == "📝 Live Editor":
                         # Save to State
                         st.session_state.editor_pages[pg_num] = combined
                         
-                        # Reset Canvas Key (Taaki canvas clear ho jaye aur changes background ban jaye)
+                        # Reset Canvas Key
                         st.session_state.canvas_key += 1
                         st.success("Saved!")
                         st.rerun()
