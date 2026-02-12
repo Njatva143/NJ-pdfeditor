@@ -1,9 +1,10 @@
-streamlit
+streamlit==1.29.0
 streamlit-drawable-canvas==0.9.3
-pymupdf
 pdf2image
+Pillow
 pdf2docx
 python-docx
+pymupdf
 fpdf2
 Pillow
 numpy
